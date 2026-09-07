@@ -4,49 +4,38 @@ export type RouteContext = {
   path: string
   params: Params
   query: URLSearchParams
-  navigate: (to: string, options?: NavigateOptions) => Promise<void>
+  signal: AbortSignal
 }
 
 export type Controller = {
-  view: () => Node
-  destroy?: () => void
+  load(route: RouteContext): void | Promise<void>
 }
 
-export type ControllerObject = {
-  view: (context: RouteContext) => Node
-  destroy?: () => void
-}
+export type ControllerClass<App> = new (app: App) => Controller
 
-export type ControllerClass = new (context: RouteContext) => Controller
-
-export type ControllerFactory =
-  | ControllerObject
-  | ControllerClass
-  | ((context: RouteContext) => Node | Controller)
-
-export type Route = {
+export type Route<App> = {
   path: string
-  controller: ControllerFactory
+  controller: ControllerClass<App>
 }
 
 export type NavigateOptions = {
   replace?: boolean
 }
 
-export type RouterOptions = {
-  target: Element
-  routes: Route[]
-  notFound?: ControllerFactory
+export type RouterOptions<App> = {
+  app: App
+  routes: Route<App>[]
+  notFound?: ControllerClass<App>
 }
 
-type Match = {
-  route: Route
+type Match<App> = {
+  route: Route<App>
   params: Params
 }
 
-export function createRouter(options: RouterOptions) {
-  const { target, routes, notFound } = options
-  let current: Controller | undefined
+export function createRouter<App>(options: RouterOptions<App>) {
+  const { app, routes, notFound } = options
+  let lifetime: AbortController | undefined
   let started = false
 
   const navigate = async (
@@ -66,35 +55,35 @@ export function createRouter(options: RouterOptions) {
       history.pushState(null, "", url)
     }
 
-    await show(url)
+    await load(url)
   }
 
-  const show = async (url = new URL(location.href)): Promise<void> => {
+  const load = async (url = new URL(location.href)): Promise<void> => {
+    lifetime?.abort()
+
     const match = findRoute(routes, url.pathname)
+    const Controller = match?.route.controller ?? notFound
 
-    current?.destroy?.()
-
-    const context: RouteContext = {
-      path: url.pathname,
-      params: match?.params ?? {},
-      query: url.searchParams,
-      navigate
-    }
-
-    const factory = match?.route.controller ?? notFound
-
-    if (!factory) {
-      current = undefined
-      target.replaceChildren()
+    if (!Controller) {
+      lifetime = undefined
       return
     }
 
-    current = makeController(factory, context)
-    target.replaceChildren(current.view())
+    const abort = new AbortController()
+    lifetime = abort
+
+    const controller = new Controller(app)
+
+    await controller.load({
+      path: url.pathname,
+      params: match?.params ?? {},
+      query: url.searchParams,
+      signal: abort.signal
+    })
   }
 
   const onPopState = () => {
-    void show()
+    void load()
   }
 
   const onClick = (event: MouseEvent) => {
@@ -116,7 +105,7 @@ export function createRouter(options: RouterOptions) {
     if (!(anchor instanceof HTMLAnchorElement)) return
 
     if (
-      anchor.target && anchor.target !== "_self" ||
+      (anchor.target && anchor.target !== "_self") ||
       anchor.hasAttribute("download")
     ) {
       return
@@ -126,9 +115,11 @@ export function createRouter(options: RouterOptions) {
 
     if (
       url.origin !== location.origin ||
-      url.pathname === location.pathname &&
-      url.search === location.search &&
-      url.hash !== location.hash
+      (
+        url.pathname === location.pathname &&
+        url.search === location.search &&
+        url.hash !== location.hash
+      )
     ) {
       return
     }
@@ -144,7 +135,7 @@ export function createRouter(options: RouterOptions) {
     addEventListener("popstate", onPopState)
     document.addEventListener("click", onClick)
 
-    await show()
+    await load()
   }
 
   const stop = (): void => {
@@ -154,44 +145,17 @@ export function createRouter(options: RouterOptions) {
     removeEventListener("popstate", onPopState)
     document.removeEventListener("click", onClick)
 
-    current?.destroy?.()
-    current = undefined
+    lifetime?.abort()
+    lifetime = undefined
   }
 
-  return { start, stop, navigate, show }
+  return { start, stop, navigate, load }
 }
 
-function makeController(
-  factory: ControllerFactory,
-  context: RouteContext
-): Controller {
-  if (isClass(factory)) {
-    return new factory(context)
-  }
-
-  if (typeof factory === "function") {
-    const result = factory(context)
-
-    if (result instanceof Node) {
-      return { view: () => result }
-    }
-
-    return result
-  }
-
-  return {
-    view: () => factory.view(context),
-    destroy: factory.destroy?.bind(factory)
-  }
-}
-
-function isClass(factory: ControllerFactory): factory is ControllerClass {
-  if (typeof factory !== "function") return false
-
-  return /^class\s/.test(Function.prototype.toString.call(factory))
-}
-
-function findRoute(routes: Route[], pathname: string): Match | undefined {
+function findRoute<App>(
+  routes: Route<App>[],
+  pathname: string
+): Match<App> | undefined {
   for (const route of routes) {
     const params = matchPath(route.path, pathname)
     if (params) return { route, params }

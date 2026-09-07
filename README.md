@@ -1,6 +1,6 @@
 # mvc-router
 
-A tiny controller-lifecycle router for browser applications.
+A tiny controller-lifecycle router for browser applications. **~1.0 kB min+gzip** (current runtime, excluding TypeScript types).
 
 mvc-router does four things:
 

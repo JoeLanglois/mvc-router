@@ -1,6 +1,6 @@
 # mvc-router
 
-A tiny controller-lifecycle router for browser applications. **1,030 bytes min+gzip (1.01 KiB)** for the current runtime, excluding TypeScript types.
+A tiny controller-lifecycle router for browser applications. **795 bytes min+gzip (0.78 KiB)** for the current runtime, excluding TypeScript types.
 
 mvc-router does four things:
 
@@ -299,6 +299,15 @@ class LogoutController {
 ```
 
 mvc-router does not care.
+
+## Size
+
+The runtime export is **795 bytes minified and gzipped (0.78 KiB)**. TypeScript declarations are excluded. This is measured from the production build with Terser 5.51.2 and gzip 1.12:
+
+```sh
+npm run build
+npx terser@5.51.2 dist/index.js --compress --mangle --module | gzip -9 | wc -c
+```
 
 ## Regular links
 

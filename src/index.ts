@@ -12,10 +12,14 @@ export type Controller = {
 }
 
 export type ControllerClass<App> = new (app: App) => Controller
+export type ControllerFactory<App> = (app: App) => Controller
+export type ControllerDefinition<App> =
+  | ControllerClass<App>
+  | ControllerFactory<App>
 
 export type Route<App> = {
   path: string
-  controller: ControllerClass<App>
+  controller: ControllerDefinition<App>
 }
 
 export type NavigateOptions = {
@@ -25,7 +29,7 @@ export type NavigateOptions = {
 export type RouterOptions<App> = {
   app: App
   routes: Route<App>[]
-  notFound?: ControllerClass<App>
+  notFound?: ControllerDefinition<App>
 }
 
 type Match<App> = {
@@ -62,9 +66,9 @@ export function createRouter<App>(options: RouterOptions<App>) {
     lifetime?.abort()
 
     const match = findRoute(routes, url.pathname)
-    const Controller = match?.route.controller ?? notFound
+    const definition = match?.route.controller ?? notFound
 
-    if (!Controller) {
+    if (!definition) {
       lifetime = undefined
       return
     }
@@ -72,7 +76,7 @@ export function createRouter<App>(options: RouterOptions<App>) {
     const abort = new AbortController()
     lifetime = abort
 
-    const controller = new Controller(app)
+    const controller = createController(definition, app)
 
     await controller.load({
       path: url.pathname,
@@ -150,6 +154,23 @@ export function createRouter<App>(options: RouterOptions<App>) {
   }
 
   return { start, stop, navigate, load }
+}
+
+function createController<App>(
+  definition: ControllerDefinition<App>,
+  app: App
+): Controller {
+  if (isClass(definition)) {
+    return new definition(app)
+  }
+
+  return definition(app)
+}
+
+function isClass<App>(
+  definition: ControllerDefinition<App>
+): definition is ControllerClass<App> {
+  return /^class\s/.test(Function.prototype.toString.call(definition))
 }
 
 function findRoute<App>(

@@ -1,160 +1,135 @@
 # mvc-router
 
-A tiny browser router for MVC-style applications.
+A tiny controller-lifecycle router for browser applications.
 
-It maps URLs to controllers, renders the controller's DOM into a target, and gets out of the way.
+mvc-router does four things:
 
-There is no component framework, state store, view abstraction, dependency injection system, or special link component.
+1. matches the current URL;
+2. creates the matching controller with your app object;
+3. gives that route its own `AbortSignal`;
+4. calls the controller's async `load(route)` method.
+
+It does **not** render, replace DOM, manage state, define views, or own application layout.
 
 ## Basic use
 
 ```ts
 import { createRouter } from "@jdlanglois/mvc-router"
 
+const app = {
+  api: createApi(),
+  root: document.querySelector("#app")
+}
+
+class CompaniesController {
+  constructor(app) {
+    this.app = app
+  }
+
+  async load({ signal }) {
+    const companies = await this.app.api.companies.list({ signal })
+
+    this.app.root.replaceChildren(
+      CompaniesView(companies)
+    )
+  }
+}
+
 const router = createRouter({
-  target: document.querySelector("#app")!,
+  app,
   routes: [
-    {
-      path: "/",
-      controller: () => Home()
-    },
-    {
-      path: "/companies",
-      controller: () => Companies()
-    },
-    {
-      path: "/companies/:id",
-      controller: ({ params }) => Company(params.id)
-    }
+    { path: "/companies", controller: CompaniesController }
   ]
 })
 
 router.start()
 ```
 
-A controller can return any real DOM `Node`, including DOM created with UIBuilder:
+The router never calls `replaceChildren()`. The controller decides whether to render, where to render, and whether an update should replace a whole screen or one small subtree.
 
-```tsx
-{
-  path: "/companies/:id",
-  controller: ({ params }) => (
-    <main>
-      <h1>Company {params.id}</h1>
-    </main>
-  )
-}
-```
+## App as composition root
 
-## Regular links
-
-Navigation uses ordinary HTML links:
-
-```html
-<a href="/">Home</a>
-<a href="/companies">Companies</a>
-<a href="/settings">Settings</a>
-```
-
-No `appnav` class, custom element, link component, or `onclick` handler is needed.
-
-The router intercepts unmodified left-clicks on same-origin links. External links, downloads, links with another `target`, modified clicks, and hash-only navigation retain normal browser behavior.
-
-This means links remain links: open-in-new-tab works, copying the URL works, and the application still has meaningful HTML.
-
-## Controller styles
-
-mvc-router intentionally accepts several controller styles. Use whichever has the least ceremony for the screen.
-
-### Function returning DOM
-
-For simple screens:
+The app object owns things that live longer than a route:
 
 ```ts
-const About = () => {
-  const main = document.createElement("main")
-  main.textContent = "About"
-  return main
+const app = {
+  api: createApi(),
+  socket: createSocket("/ws"),
+  bus: new EventTarget(),
+  companies: createCompaniesService(),
+  projects: createProjectsService(),
+  root: document.querySelector("#app")
 }
+
+app.router = createRouter({
+  app,
+  routes
+})
+
+app.router.start()
 ```
 
-### Closure controller
-
-Use a closure when a screen needs private state or cleanup:
+Controllers receive the same app object in their constructor:
 
 ```ts
-const Company = ({ params }) => {
-  const abort = new AbortController()
-
-  function save() {
-    // ...
+class ProjectController {
+  constructor(app) {
+    this.app = app
   }
 
-  return {
-    view() {
-      return (
-        <main>
-          <h1>Company {params.id}</h1>
-          <button onclick={save}>Save</button>
-        </main>
-      )
-    },
+  async load(route) {
+    const project = await this.app.projects.get(
+      route.params.id,
+      { signal: route.signal }
+    )
 
-    destroy() {
-      abort.abort()
-    }
+    this.app.root.replaceChildren(
+      ProjectView(project)
+    )
   }
 }
 ```
 
-### Plain object
+There is no dependency-injection container. The app object is just the application's composition root.
 
-A Mithril-style object is useful when no per-route instance state is needed:
+## Controller contract
+
+A controller has one required method:
 
 ```ts
-const Settings = {
-  view(context) {
-    return <main>Settings</main>
+class Controller {
+  constructor(app) {
+    this.app = app
+  }
+
+  async load(route) {
+    // initialize the route
   }
 }
 ```
 
-### Class
-
-Classes work when they are the natural shape for a larger controller:
+In TypeScript:
 
 ```ts
-class CompanyController {
-  constructor(context) {
-    this.id = context.params.id
-  }
-
-  view() {
-    return <Company id={this.id} />
-  }
-
-  destroy() {
-    // optional cleanup
-  }
+type Controller = {
+  load(route: RouteContext): void | Promise<void>
 }
 ```
 
-The router normalizes all four forms to the same tiny lifecycle:
+There is deliberately no `view()` or `destroy()` contract.
 
-```ts
-view()
-destroy?()
-```
+The controller owns rendering. The route's `AbortSignal` owns cleanup.
 
 ## Route context
 
-Controllers receive:
+`load()` receives:
 
 ```ts
 {
   path,
   params,
   query,
-  navigate
+  signal
 }
 ```
 
@@ -164,93 +139,230 @@ For:
 /companies/42?tab=people
 ```
 
-and:
+with:
 
 ```ts
-{ path: "/companies/:id", controller: Company }
+{ path: "/companies/:id", controller: CompanyController }
 ```
 
-the controller receives:
+you get:
 
 ```ts
-params.id === "42"
-query.get("tab") === "people"
+async load({ params, query, signal }) {
+  params.id === "42"
+  query.get("tab") === "people"
+  signal.aborted === false
+}
 ```
+
+## Route lifetime
+
+Every route gets a fresh `AbortSignal`.
+
+Before loading the next route, mvc-router aborts the previous one:
+
+```text
+new CompanyController(app)
+        ↓
+await controller.load(route)
+        ↓
+      active
+        ↓
+   navigation
+        ↓
+route.signal aborts
+        ↓
+new ProjectsController(app)
+        ↓
+await controller.load(route)
+```
+
+That plugs directly into browser APIs.
+
+### Events
+
+```ts
+async load({ signal }) {
+  document.addEventListener(
+    "keydown",
+    this.onKeyDown,
+    { signal }
+  )
+}
+```
+
+### Fetch
+
+```ts
+async load({ params, signal }) {
+  const response = await fetch(
+    `/api/companies/${params.id}`,
+    { signal }
+  )
+}
+```
+
+### EventTarget services
+
+```ts
+async load({ signal }) {
+  this.app.bus.addEventListener(
+    "company.changed",
+    this.onCompanyChanged,
+    { signal }
+  )
+}
+```
+
+### APIs without AbortSignal support
+
+Bridge them once:
+
+```ts
+async load({ signal }) {
+  const unsubscribe = this.app.store.subscribe(this.update)
+
+  signal.addEventListener("abort", unsubscribe, { once: true })
+}
+```
+
+Likewise for intervals:
+
+```ts
+const interval = setInterval(refresh, 5000)
+
+signal.addEventListener(
+  "abort",
+  () => clearInterval(interval),
+  { once: true }
+)
+```
+
+## Rendering
+
+Rendering is entirely application code.
+
+A controller may replace a complete screen:
+
+```ts
+this.app.root.replaceChildren(
+  CompaniesView(companies)
+)
+```
+
+update one region:
+
+```ts
+document
+  .querySelector("#sidebar")
+  ?.replaceChildren(SidebarView(projects))
+```
+
+or not render anything:
+
+```ts
+class LogoutController {
+  constructor(app) {
+    this.app = app
+  }
+
+  async load() {
+    await this.app.auth.logout()
+    await this.app.router.navigate("/login", { replace: true })
+  }
+}
+```
+
+mvc-router does not care.
+
+## Regular links
+
+Use normal links:
+
+```html
+<a href="/">Home</a>
+<a href="/companies">Companies</a>
+<a href="/settings">Settings</a>
+```
+
+There is no `appnav` class, link component, custom element, or special click handler.
+
+mvc-router intercepts ordinary unmodified left-clicks on same-origin links. External links, downloads, modified clicks, links with another target, and hash-only navigation retain normal browser behavior.
 
 ## Programmatic navigation
 
-Use regular links whenever navigation is actually a link.
-
-For navigation caused by application logic:
+The router exposes:
 
 ```ts
-await context.navigate("/companies/42")
+await app.router.navigate("/companies/42")
 ```
 
-or:
+and:
 
 ```ts
-await context.navigate("/login", { replace: true })
+await app.router.navigate("/login", {
+  replace: true
+})
 ```
 
-The latter uses `history.replaceState`.
+Use ordinary links when the action is semantically navigation. Use `navigate()` for navigation caused by application logic.
 
-## Layouts
+## Not found
 
-Layouts belong to your application, not the router.
+A not-found controller follows the exact same lifecycle:
 
-For example, a logged-in controller can wrap every logged-in screen:
+```ts
+class NotFoundController {
+  constructor(app) {
+    this.app = app
+  }
 
-```tsx
-function LoggedIn(screen) {
-  return (
-    <div class="app">
-      <Sidebar />
-      <main>{screen}</main>
-    </div>
-  )
+  load({ path }) {
+    this.app.root.replaceChildren(
+      NotFoundView(path)
+    )
+  }
 }
 
-const routes = [
-  {
-    path: "/login",
-    controller: () => <Login />
-  },
-  {
-    path: "/companies",
-    controller: () => LoggedIn(<Companies />)
-  },
-  {
-    path: "/projects",
-    controller: () => LoggedIn(<Projects />)
-  }
-]
+createRouter({
+  app,
+  routes,
+  notFound: NotFoundController
+})
 ```
-
-Or make `LoggedInController` a shared base/helper if its sidebar has substantial behavior. mvc-router does not impose a nested layout abstraction.
-
-## Lifecycle
-
-When navigation changes controllers:
-
-1. the previous controller's optional `destroy()` runs;
-2. the new controller is created;
-3. its `view()` is called;
-4. the target's contents are replaced with the returned DOM.
-
-If a screen has nothing to clean up, it needs no lifecycle code at all.
 
 ## API
 
 ```ts
-createRouter(options)
+createRouter({
+  app,
+  routes,
+  notFound?
+})
 
 router.start()
 router.stop()
 router.navigate(path, options?)
-router.show()
+router.load()
 
 matchPath(pattern, pathname)
 ```
 
-That's the whole router.
+The intended architecture is small:
+
+```text
+App
+  long-lived services
+
+Router
+  URL → controller
+  route lifetime
+
+Controller
+  load data
+  handle events
+  decide when/how to render
+
+UIBuilder (optional)
+  create DOM
+```

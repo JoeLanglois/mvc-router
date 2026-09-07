@@ -47,6 +47,34 @@ describe("router", () => {
     router.stop()
   })
 
+  it("supports closure controllers and passes the app to the factory", async () => {
+    const app = { name: "test-app" }
+    let injected: typeof app | undefined
+    let loaded = false
+
+    const HomeController = (value: typeof app) => {
+      injected = value
+
+      return {
+        load() {
+          loaded = true
+        }
+      }
+    }
+
+    const router = createRouter({
+      app,
+      routes: [{ path: "/", controller: HomeController }]
+    })
+
+    await router.start()
+
+    expect(injected).toBe(app)
+    expect(loaded).toBe(true)
+
+    router.stop()
+  })
+
   it("calls load with route params and query", async () => {
     const app = {}
     let route: RouteContext | undefined

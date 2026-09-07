@@ -32,11 +32,6 @@ export type RouterOptions<App> = {
   notFound?: ControllerDefinition<App>
 }
 
-type Match<App> = {
-  route: Route<App>
-  params: Params
-}
-
 export function createRouter<App>(options: RouterOptions<App>) {
   const { app, routes, notFound } = options
   let lifetime: AbortController | undefined
@@ -65,22 +60,32 @@ export function createRouter<App>(options: RouterOptions<App>) {
   const load = async (url = new URL(location.href)): Promise<void> => {
     lifetime?.abort()
 
-    const match = findRoute(routes, url.pathname)
-    const definition = match?.route.controller ?? notFound
+    let definition = notFound
+    let params: Params = {}
+
+    for (const route of routes) {
+      const match = matchPath(route.path, url.pathname)
+
+      if (match) {
+        definition = route.controller
+        params = match
+        break
+      }
+    }
 
     if (!definition) {
       lifetime = undefined
       return
     }
 
-    const abort = new AbortController()
-    lifetime = abort
-
-    const controller = createController(definition, app)
+    const abort = lifetime = new AbortController()
+    const controller = definition.prototype?.load
+      ? new (definition as ControllerClass<App>)(app)
+      : (definition as ControllerFactory<App>)(app)
 
     await controller.load({
       path: url.pathname,
-      params: match?.params ?? {},
+      params,
       query: url.searchParams,
       signal: abort.signal
     })
@@ -93,7 +98,7 @@ export function createRouter<App>(options: RouterOptions<App>) {
   const onClick = (event: MouseEvent) => {
     if (
       event.defaultPrevented ||
-      event.button !== 0 ||
+      event.button ||
       event.metaKey ||
       event.ctrlKey ||
       event.shiftKey ||
@@ -156,36 +161,9 @@ export function createRouter<App>(options: RouterOptions<App>) {
   return { start, stop, navigate, load }
 }
 
-function createController<App>(
-  definition: ControllerDefinition<App>,
-  app: App
-): Controller {
-  if (isClass(definition)) {
-    return new definition(app)
-  }
-
-  return definition(app)
-}
-
-function isClass<App>(
-  definition: ControllerDefinition<App>
-): definition is ControllerClass<App> {
-  return /^class\s/.test(Function.prototype.toString.call(definition))
-}
-
-function findRoute<App>(
-  routes: Route<App>[],
-  pathname: string
-): Match<App> | undefined {
-  for (const route of routes) {
-    const params = matchPath(route.path, pathname)
-    if (params) return { route, params }
-  }
-}
-
 export function matchPath(pattern: string, pathname: string): Params | undefined {
-  const patternParts = parts(pattern)
-  const pathParts = parts(pathname)
+  const patternParts = pattern.split("/").filter(Boolean)
+  const pathParts = pathname.split("/").filter(Boolean)
 
   if (patternParts.length !== pathParts.length) return
 
@@ -206,6 +184,3 @@ export function matchPath(pattern: string, pathname: string): Params | undefined
   return params
 }
 
-function parts(path: string): string[] {
-  return path.split("/").filter(Boolean)
-}

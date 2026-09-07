@@ -5,7 +5,7 @@ A tiny controller-lifecycle router for browser applications.
 mvc-router does four things:
 
 1. matches the current URL;
-2. creates the matching controller with your app object;
+2. creates the matching controller with your app object, using either a class or a closure factory;
 3. gives that route its own `AbortSignal`;
 4. calls the controller's async `load(route)` method.
 
@@ -69,7 +69,7 @@ app.router = createRouter({
 app.router.start()
 ```
 
-Controllers receive the same app object in their constructor:
+Class controllers receive the app object in their constructor:
 
 ```ts
 class ProjectController {
@@ -92,7 +92,7 @@ class ProjectController {
 
 There is no dependency-injection container. The app object is just the application's composition root.
 
-## Controller contract
+## Controller styles
 
 A controller has one required method:
 
@@ -115,6 +115,31 @@ type Controller = {
   load(route: RouteContext): void | Promise<void>
 }
 ```
+
+The class form is useful when a screen naturally wants instance methods and fields.
+
+Closure controllers are equally supported. The factory receives the same app object and returns an object with `load(route)`:
+
+```ts
+const ProjectController = app => {
+  let project
+
+  return {
+    async load({ params, signal }) {
+      project = await app.projects.get(
+        params.id,
+        { signal }
+      )
+
+      app.root.replaceChildren(
+        ProjectView(project)
+      )
+    }
+  }
+}
+```
+
+This gives you the same lifecycle without requiring a class.
 
 There is deliberately no `view()` or `destroy()` contract.
 

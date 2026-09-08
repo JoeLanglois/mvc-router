@@ -38,7 +38,7 @@ describe("router", () => {
 
     const router = createRouter({
       app,
-      routes: [{ path: "/", controller: HomeController }]
+      routes: [["/", HomeController]]
     })
 
     await router.start()
@@ -64,7 +64,7 @@ describe("router", () => {
 
     const router = createRouter({
       app,
-      routes: [{ path: "/", controller: HomeController }]
+      routes: [["/", HomeController]]
     })
 
     await router.start()
@@ -89,7 +89,7 @@ describe("router", () => {
 
     const router = createRouter({
       app,
-      routes: [{ path: "/companies/:id", controller: CompanyController }]
+      routes: [["/companies/:id", CompanyController]]
     })
 
     await router.start()
@@ -117,7 +117,7 @@ describe("router", () => {
 
     const router = createRouter({
       app,
-      routes: [{ path: "/", controller: CompaniesController }]
+      routes: [["/", CompaniesController]]
     })
 
     await router.start()
@@ -150,8 +150,8 @@ describe("router", () => {
     const router = createRouter({
       app,
       routes: [
-        { path: "/", controller: HomeController },
-        { path: "/companies", controller: CompaniesController }
+        ["/", HomeController],
+        ["/companies", CompaniesController]
       ]
     })
 
@@ -180,7 +180,7 @@ describe("router", () => {
 
     const router = createRouter({
       app,
-      routes: [{ path: "/", controller: HomeController }]
+      routes: [["/", HomeController]]
     })
 
     await router.start()
@@ -239,8 +239,8 @@ describe("router", () => {
     const router = createRouter({
       app,
       routes: [
-        { path: "/", controller: HomeController },
-        { path: "/companies", controller: CompaniesController }
+        ["/", HomeController],
+        ["/companies", CompaniesController]
       ]
     })
 
@@ -269,7 +269,7 @@ describe("router", () => {
 
     const router = createRouter({
       app,
-      routes: [{ path: "/", controller: HomeController }]
+      routes: [["/", HomeController]]
     })
 
     await router.start()
@@ -299,7 +299,7 @@ describe("router", () => {
 
     const router = createRouter({
       app,
-      routes: [{ path: "/", controller: HomeController }]
+      routes: [["/", HomeController]]
     })
 
     await router.start()

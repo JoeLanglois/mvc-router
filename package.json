@@ -1,6 +1,6 @@
 {
   "name": "@jdlanglois/mvc-router",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tiny MVC router for browser applications",
   "type": "module",
   "license": "MIT",
@@ -17,6 +17,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"

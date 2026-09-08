@@ -1,6 +1,6 @@
 # mvc-router
 
-A tiny controller-lifecycle router for browser applications. **795 bytes min+gzip (0.78 KiB)** for the current runtime, excluding TypeScript types.
+A tiny controller-lifecycle router for browser applications. **793 bytes min+gzip (0.77 KiB)** for the current runtime, excluding TypeScript types.
 
 mvc-router does four things:
 
@@ -38,7 +38,7 @@ class CompaniesController {
 const router = createRouter({
   app,
   routes: [
-    { path: "/companies", controller: CompaniesController }
+    ["/companies", CompaniesController]
   ]
 })
 
@@ -167,7 +167,7 @@ For:
 with:
 
 ```ts
-{ path: "/companies/:id", controller: CompanyController }
+["/companies/:id", CompanyController]
 ```
 
 you get:
@@ -302,7 +302,7 @@ mvc-router does not care.
 
 ## Size
 
-The runtime export is **795 bytes minified and gzipped (0.78 KiB)**. TypeScript declarations are excluded. This is measured from the production build with Terser 5.51.2 and gzip 1.12:
+The runtime export is **793 bytes minified and gzipped (0.77 KiB)**. TypeScript declarations are excluded. This is measured from the production build with Terser 5.51.2 and gzip 1.12:
 
 ```sh
 npm run build

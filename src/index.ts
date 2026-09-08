@@ -17,10 +17,10 @@ export type ControllerDefinition<App> =
   | ControllerClass<App>
   | ControllerFactory<App>
 
-export type Route<App> = {
-  path: string
+export type Route<App> = readonly [
+  path: string,
   controller: ControllerDefinition<App>
-}
+]
 
 export type NavigateOptions = {
   replace?: boolean
@@ -28,7 +28,7 @@ export type NavigateOptions = {
 
 export type RouterOptions<App> = {
   app: App
-  routes: Route<App>[]
+  routes: readonly Route<App>[]
   notFound?: ControllerDefinition<App>
 }
 
@@ -63,11 +63,11 @@ export function createRouter<App>(options: RouterOptions<App>) {
     let definition = notFound
     let params: Params = {}
 
-    for (const route of routes) {
-      const match = matchPath(route.path, url.pathname)
+    for (const [pattern, controller] of routes) {
+      const match = matchPath(pattern, url.pathname)
 
       if (match) {
-        definition = route.controller
+        definition = controller
         params = match
         break
       }
